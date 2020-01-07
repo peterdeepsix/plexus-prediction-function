@@ -1,6 +1,6 @@
 # Image imports
 from wand.image import Image
-from google.cloud import storage, vision
+from google.cloud import storage
 
 # Main  imports
 import tensorflow
