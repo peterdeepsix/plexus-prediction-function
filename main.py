@@ -6,7 +6,7 @@ client = storage.Client()
 
 def make_thumbnail(data, context):
     # Get the file that has been uploaded to GCS
-    bucket = client.get_bucket(data['plexus-1d216.appspot.com'])
+    bucket = client.get_bucket(data['bucket'])
     blob = bucket.get_blob(data['name'])
     imagedata = blob.download_as_string()
     # Create a new image object and resample it
