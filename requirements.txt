@@ -1,2 +1,6 @@
 google-cloud-storage
 Wand
+tensorflow
+Pillow
+numpy
+matplotlib

@@ -1,8 +1,3 @@
-# Image imports
-from wand.image import Image
-from google.cloud import storage, vision
-
-# Main  imports
 import tensorflow
 import tensorflow as tf
 from tensorflow.python.keras import models
@@ -15,86 +10,82 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras.preprocessing import image as kp_image
 import IPython.display
 import os
-import tempfile
 import functools
 import time
 from PIL import Image
 import numpy as np
 import numpy
+
+
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-
-# File path config
-style_path = 'https://miro.medium.com/max/3714/1*z6egnhPoF5Go7xn7tbsibw.jpeg'
-content_path = None
-output_path = './output.png'
-
-# Matplot config
 mpl.rcParams['figure.figsize'] = (10, 10)
 mpl.rcParams['axes.grid'] = False
 
-# Global client
-storage_client = storage.Client()
-vision_client = vision.ImageAnnotatorClient()
+
+style_path = '/content/drive/Shared drives/Deep Six Design/Deep Six Design/Projects/Neural Art Process/Iterations/Contact/style.jpg'
+content_path = '/content/drive/Shared drives/Deep Six Design/Deep Six Design/Projects/Neural Art Process/Iterations/Contact/content.jpg'
+output_path = '/content/drive/Shared drives/Deep Six Design/Deep Six Design/Projects/Neural Art Process/Iterations/Contact/output.png'
 
 # We keep model as global variable so we don't have to reload it in case of warm invocations
 model = None
 
-# Main Function
+
+class CustomModel(Model):
+    def __init__(self):
+        super(CustomModel, self).__init__()
+        self.conv1 = Conv2D(32, 3, activation='relu')
+        self.flatten = Flatten()
+        self.d1 = Dense(128, activation='relu')
+        self.d2 = Dense(10, activation='softmax')
+
+    def call(self, x):
+        x = self.conv1(x)
+        x = self.flatten(x)
+        x = self.d1(x)
+        return self.d2(x)
 
 
-def predict(data, context):
-    file_data = data
-    file_name = file_data['name']
-    bucket_name = file_data['bucket']
+def download_blob(bucket_name, source_blob_name, destination_file_name):
+    """Downloads a blob from the bucket."""
+    storage_client = storage.Client()
+    bucket = storage_client.get_bucket(bucket_name)
+    blob = bucket.blob(source_blob_name)
 
-    # Get the file that has been uploaded to GCS
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.get_blob(data['name'])
-    blob_uri = f'gs://{bucket_name}/{file_name}'
-    blob_source = {'source': {'image_uri': blob_uri}}
+    blob.download_to_filename(destination_file_name)
 
-    # Ignore already-blurred files
-    # if file_name.startswith('blurred-'):
-    #     print(f'The image {file_name} is already blurred.')
-    #     return
-
-    # Call home!
-    print(f'Analyzing {file_name}.')
-
-    # save blob to temp storage
-    imagedata = blob.download_as_string()
-    file_name = imagedata.name
-    _, temp_local_filename = tempfile.mkstemp()
-
-    # Download content file from bucket.
-    imagedata.download_to_filename(temp_local_filename)
-    print(f'Image {file_name} was downloaded to {temp_local_filename}.')
-    content_path = "/{}".format(temp_local_filename)
-
-    # setup for style transfer
-    _, temp_local_resultname = tempfile.mkstemp()
-    output_path = "/{}".format(temp_local_resultname)
-
-    # Run Style Transfer
-    result = best_results()
-
-    result.imread().download_to_filename(temp_local_resultname)
-    print(f'Result image was downloaded to {temp_local_resultname}.')
-
-    # Upload the resampled image to the other bucket
-    blur_bucket_name = os.getenv('BLURRED_BUCKET_NAME')
-    blur_bucket = storage_client.bucket(blur_bucket_name)
-
-    new_blob = blur_bucket.blob(file_name)
-    new_blob.upload_from_filename(temp_local_resultname)
-    os.remove(temp_local_filename)
-    os.remove(temp_local_resultname)
+    print('Blob {} downloaded to {}.'.format(
+        source_blob_name,
+        destination_file_name))
 
 
-########################
-### Prediction Start ###
-########################
+def handler(request):
+    global model
+    class_names = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
+                   'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
+
+    # Model load which only happens during cold starts
+    if model is None:
+        download_blob('<your_bucket_name>', 'tensorflow/fashion_mnist_weights.index',
+                      '/tmp/fashion_mnist_weights.index')
+        download_blob('<your_bucket_name>', 'tensorflow/fashion_mnist_weights.data-00000-of-00001',
+                      '/tmp/fashion_mnist_weights.data-00000-of-00001')
+        model = CustomModel()
+        model.load_weights('/tmp/fashion_mnist_weights')
+
+    download_blob('<your_bucket_name>', 'tensorflow/test.png', '/tmp/test.png')
+    image = numpy.array(Image.open('/tmp/test.png'))
+    input_np = (numpy.array(Image.open('/tmp/test.png')) /
+                255)[numpy.newaxis, :, :, numpy.newaxis]
+    predictions = model.call(input_np)
+    print(predictions)
+    print("Image is "+class_names[numpy.argmax(predictions)])
+
+    return class_names[numpy.argmax(predictions)]
+
+##########################################################################
+#----------------------------------Python Notebook-----------------------#
+##########################################################################
 
 
 def load_img(path_to_img):
@@ -363,13 +354,24 @@ def run_style_transfer(content_path,
 # depreocess the output image to remove processing
 
 
-def show_results(best_img, content_path, style_path):
+def show_results(best_img, content_path, style_path, output_path, show_large_final=True):
     plt.figure(figsize=(10, 5))
     content = load_img(content_path)
     style = load_img(style_path)
-    plt.figure(figsize=(40, 40))
-    plt.title('Output Image')
-    return plt
+
+    plt.subplot(1, 2, 1)
+    imshow(content, 'Content Image')
+
+    plt.subplot(1, 2, 2)
+    imshow(style, 'Style Image')
+
+    if show_large_final:
+        plt.figure(figsize=(40, 40))
+
+        plt.imshow(best_img)
+        plt.imsave(output_path, best_img)
+        plt.title('Output Image')
+        plt.show()
 
 # Run style transfer and show the results
 
@@ -378,9 +380,4 @@ def best_results():
     best, best_loss = run_style_transfer(
         content_path, style_path, num_iterations=1000)
     Image.fromarray(best)
-    results = show_results(best, content_path, style_path)
-    return results
-
-########################
-### Prediction End ###
-########################
+    show_results(best, content_path, style_path, output_path)
