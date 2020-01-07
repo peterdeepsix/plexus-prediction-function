@@ -1,7 +1,2 @@
-# package>=version
-tensorflow==2.0.0
-google-cloud-storage==1.16.1
-Pillow==6.0.0
-matplotlib==3.1.2
-numpy==1.18.1
-google-cloud==0.34.0
+google-cloud-storage
+Wand
