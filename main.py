@@ -29,6 +29,20 @@ style_path = 'https://miro.medium.com/max/3714/1*z6egnhPoF5Go7xn7tbsibw.jpeg'
 content_path = None
 output_path = './output.png'
 
+# pull feature maps from these content layers
+content_layers = ['block5_conv2']
+# interested in these style layers
+style_layers = ['block1_conv1',
+                'block2_conv1',
+                'block3_conv1',
+                'block4_conv1',
+                'block5_conv1'
+                ]
+num_content_layers = len(content_layers)
+num_style_layers = len(style_layers)
+# Access intermediate layers of style and features by getting corresponding outputs with Keras
+# define the model via functional api like this... model = Model(inputs, outputs)
+
 # Matplot config
 mpl.rcParams['figure.figsize'] = (10, 10)
 mpl.rcParams['axes.grid'] = False
@@ -49,9 +63,8 @@ def predict(data, context):
     bucket_name = file_data['bucket']
 
     # Get the file that has been uploaded to GCS
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.get_blob(data['name'])
-    blob_uri = f'gs://{bucket_name}/{file_name}'
+    blob = storage_client.bucket(bucket_name).get_blob(file_name)
+    blob_uri = f"gs://{bucket_name}/{file_name}"
     blob_source = {'source': {'image_uri': blob_uri}}
 
     # Ignore already-blurred files
@@ -92,11 +105,6 @@ def predict(data, context):
     os.remove(temp_local_resultname)
 
 
-########################
-### Prediction Start ###
-########################
-
-
 def load_img(path_to_img):
     max_dim = 1024
     img = Image.open(path_to_img)
@@ -121,7 +129,6 @@ def imshow(img, title=None):
     if title is not None:
         plt.title(title)
     plt.imshow(out)
-
 # Load preprocess images according to that VGG train process. each channel is normalized by mean = [103.939, 116.779, 123.68] and with channels BGR.
 
 
@@ -129,7 +136,6 @@ def load_and_process_img(path_to_img):
     img = load_img(path_to_img)
     img = tf.keras.applications.vgg19.preprocess_input(img)
     return img
-
 # Inverse the preprocess step to view the ouptuts of the optimization. clip values to 0-255 from infinity
 
 
@@ -152,24 +158,6 @@ def deprocess_img(processed_img):
     return x
 
 
-# pull feature maps from these content layers
-content_layers = ['block5_conv2']
-
-# interested in these style layers
-style_layers = ['block1_conv1',
-                'block2_conv1',
-                'block3_conv1',
-                'block4_conv1',
-                'block5_conv1'
-                ]
-
-num_content_layers = len(content_layers)
-num_style_layers = len(style_layers)
-
-# Access intermediate layers of style and features by getting corresponding outputs with Keras
-# define the model via functional api like this... model = Model(inputs, outputs)
-
-
 def get_model():
     # Load pretrained VGG, trained on imagenet data
     vgg = tf.keras.applications.vgg19.VGG19(
@@ -181,13 +169,11 @@ def get_model():
     model_outputs = style_outputs + content_outputs
     # Build model
     return models.Model(vgg.input, model_outputs)
-
 # add content losses to each layer
 
 
 def get_content_loss(base_content, target):
     return tf.reduce_mean(tf.square(base_content - target))
-
 # implement style lose as a distance metric
 
 
@@ -209,7 +195,6 @@ def get_style_loss(base_style, gram_target):
 
     # / (4. * (channels ** 2) * (width * height) ** 2)
     return tf.reduce_mean(tf.square(gram_style - gram_target))
-
 # load content and style, feed them through the network and output the representations
 
 
@@ -217,24 +202,20 @@ def get_feature_representations(model, content_path, style_path):
     # Load our images in
     content_image = load_and_process_img(content_path)
     style_image = load_and_process_img(style_path)
-
     # batch compute content and style features
     style_outputs = model(style_image)
     content_outputs = model(content_image)
-
     # Get the style and content feature representations from our model
     style_features = [style_layer[0]
                       for style_layer in style_outputs[:num_style_layers]]
     content_features = [content_layer[0]
                         for content_layer in content_outputs[num_style_layers:]]
     return style_features, content_features
-
 # compute the loss and gradients
 
 
 def compute_loss(model, loss_weights, init_image, gram_style_features, content_features):
     style_weight, content_weight = loss_weights
-
     # Feed our init image through our model. returns the content and style representations at our desired layers
     model_outputs = model(init_image)
 
@@ -281,7 +262,6 @@ def run_style_transfer(content_path,
     model = get_model()
     for layer in model.layers:
         layer.trainable = False
-
     # Get the style and content feature representations from specified intermediate layers
     style_features, content_features = get_feature_representations(
         model, content_path, style_path)
@@ -359,7 +339,6 @@ def run_style_transfer(content_path,
         plt.yticks([])
 
     return best_img, best_loss
-
 # depreocess the output image to remove processing
 
 
@@ -370,7 +349,6 @@ def show_results(best_img, content_path, style_path):
     plt.figure(figsize=(40, 40))
     plt.title('Output Image')
     return plt
-
 # Run style transfer and show the results
 
 
@@ -380,7 +358,3 @@ def best_results():
     Image.fromarray(best)
     results = show_results(best, content_path, style_path)
     return results
-
-########################
-### Prediction End ###
-########################
