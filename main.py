@@ -49,7 +49,6 @@ mpl.rcParams['axes.grid'] = False
 
 # Global client
 storage_client = storage.Client()
-vision_client = vision.ImageAnnotatorClient()
 
 # We keep model as global variable so we don't have to reload it in case of warm invocations
 model = None
@@ -77,7 +76,6 @@ def predict(data, context):
 
     # save blob to temp storage
     imagedata = blob.download_as_string()
-    file_name = imagedata.name
     _, temp_local_filename = tempfile.mkstemp()
 
     # Download content file from bucket.
